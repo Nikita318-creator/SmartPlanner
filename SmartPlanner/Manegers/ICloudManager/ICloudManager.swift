@@ -3,6 +3,7 @@ import Foundation
 class ICloudManager {
     static let shared = ICloudManager()
     
+    // ID из твоего скриншота
     private let containerID = "iCloud.com.SmartPlanner.app.SmartPlann"
     private let fileName = "tasks.json"
     
@@ -10,60 +11,62 @@ class ICloudManager {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(fileName)
     }
     
-    private var cloudFileURL: URL? {
-        FileManager.default.url(forUbiquityContainerIdentifier: containerID)?
-            .appendingPathComponent("Documents")
-            .appendingPathComponent(fileName)
-    }
-
-    // Инициализация мониторинга изменений в облаке
-    func setupCloudSync() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleCloudChange),
-            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: NSUbiquitousKeyValueStore.default
-        )
-        
-        // Запускаем процесс скачивания, если файла нет локально, но он есть в облаке
-        downloadFromCloudIfNeeded()
-    }
-
-    @objc private func handleCloudChange() {
-        // Логика обработки изменений (например, настроек темы)
-        let isLightMode = NSUbiquitousKeyValueStore.default.bool(forKey: "isLightMode")
-        UserDefaults.standard.set(isLightMode, forKey: "isLightMode")
+    // Проверка: включил ли пользователь синхронизацию в Settings
+    private var isSyncEnabled: Bool {
+        return !UserDefaults.standard.bool(forKey: "isCloudDisabled")
     }
 
     func syncLocalFileToCloud() {
-        guard let cloudURL = cloudFileURL else { return }
+        // Если синхронизация выключена — ничего не отправляем
+        guard isSyncEnabled else { return }
         
         DispatchQueue.global(qos: .background).async {
+            guard let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: self.containerID) else {
+                print("iCloud Container не доступен")
+                return
+            }
+            
+            let cloudURL = containerURL.appendingPathComponent("Documents").appendingPathComponent(self.fileName)
+            
             do {
-                if FileManager.default.fileExists(atPath: cloudURL.path) {
-                    try FileManager.default.removeItem(at: cloudURL)
-                }
-                
                 let cloudDirectory = cloudURL.deletingLastPathComponent()
                 if !FileManager.default.fileExists(atPath: cloudDirectory.path) {
                     try FileManager.default.createDirectory(at: cloudDirectory, withIntermediateDirectories: true)
                 }
                 
+                // Перезаписываем файл в облаке актуальной локальной версией
+                if FileManager.default.fileExists(atPath: cloudURL.path) {
+                    try FileManager.default.removeItem(at: cloudURL)
+                }
                 try FileManager.default.copyItem(at: self.localFileURL, to: cloudURL)
+                print("Файл успешно синхронизирован с iCloud")
             } catch {
-                print("Cloud sync error: \(error.localizedDescription)")
+                print("Ошибка синхронизации: \(error.localizedDescription)")
             }
         }
     }
-
-    private func downloadFromCloudIfNeeded() {
-        guard let cloudURL = cloudFileURL else { return }
+    
+    func pullFromCloud() {
+        guard isSyncEnabled else { return }
         
-        // Если файла нет локально — пробуем забрать из облака
-        if !FileManager.default.fileExists(atPath: localFileURL.path) &&
-            FileManager.default.fileExists(atPath: cloudURL.path) {
-            try? FileManager.default.copyItem(at: cloudURL, to: localFileURL)
-            TaskManager.shared.reloadTasks()
+        DispatchQueue.global(qos: .background).async {
+            guard let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: self.containerID) else { return }
+            let cloudURL = containerURL.appendingPathComponent("Documents").appendingPathComponent(self.fileName)
+            
+            if FileManager.default.fileExists(atPath: cloudURL.path) {
+                do {
+                    if FileManager.default.fileExists(atPath: self.localFileURL.path) {
+                        try FileManager.default.removeItem(at: self.localFileURL)
+                    }
+                    try FileManager.default.copyItem(at: cloudURL, to: self.localFileURL)
+                    
+                    DispatchQueue.main.async {
+                        TaskManager.shared.reloadTasks()
+                    }
+                } catch {
+                    print("Ошибка загрузки из облака: \(error)")
+                }
+            }
         }
     }
 }

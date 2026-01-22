@@ -16,4 +16,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         self.window = window
     }
+    
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        ICloudManager.shared.pullFromCloud()
+    }
 }

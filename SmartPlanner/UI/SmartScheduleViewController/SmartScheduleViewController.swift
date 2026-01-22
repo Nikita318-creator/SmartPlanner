@@ -10,6 +10,12 @@ class SmartScheduleViewController: UIViewController, UITableViewDataSource, UITa
         setupUI()
         NotificationCenter.default.addObserver(self, selector: #selector(refresh), name: NSNotification.Name("TasksUpdated"), object: nil)
         refresh()
+        
+        if !IAPManager.shared.hasActiveSubscription {
+            let lockView = PaywallView(frame: self.view.bounds)
+            self.view.addSubview(lockView)
+            lockView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        }
     }
     
     private func setupUI() {

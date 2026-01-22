@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1000D2AF2F22B96900A6C961 /* ApphudSDK in Frameworks */ = {isa = PBXBuildFile; productRef = 1000D2AE2F22B96900A6C961 /* ApphudSDK */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		1000D23A2F2167A400A6C961 /* SmartPlanner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SmartPlanner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -36,6 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1000D2AF2F22B96900A6C961 /* ApphudSDK in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +83,7 @@
 			);
 			name = SmartPlanner;
 			packageProductDependencies = (
+				1000D2AE2F22B96900A6C961 /* ApphudSDK */,
 			);
 			productName = SmartPlanner;
 			productReference = 1000D23A2F2167A400A6C961 /* SmartPlanner.app */;
@@ -107,6 +113,9 @@
 			);
 			mainGroup = 1000D2312F2167A400A6C961;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1000D2AD2F22B96900A6C961 /* XCRemoteSwiftPackageReference "ApphudSDK" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1000D23B2F2167A400A6C961 /* Products */;
 			projectDirPath = "";
@@ -351,6 +360,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1000D2AD2F22B96900A6C961 /* XCRemoteSwiftPackageReference "ApphudSDK" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apphud/ApphudSDK";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.0.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1000D2AE2F22B96900A6C961 /* ApphudSDK */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1000D2AD2F22B96900A6C961 /* XCRemoteSwiftPackageReference "ApphudSDK" */;
+			productName = ApphudSDK;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1000D2322F2167A400A6C961 /* Project object */;
 }
