@@ -101,4 +101,9 @@ class TaskManager {
             print("New storage initialized")
         }
     }
+    
+    func reloadTasks() {
+        loadTasks() 
+        NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
+    }
 }

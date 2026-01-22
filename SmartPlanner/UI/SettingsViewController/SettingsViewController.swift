@@ -37,16 +37,18 @@ class SettingsViewController: UIViewController {
     
     private func prepareData() {
         let items = [
-            // Секция Синхронизация
             SettingItem(title: "Import from Calendar", image: "calendar.badge.plus", color: nil) { [weak self] in self?.handleCalendarImport() },
+            
+            // Кнопка Сохранить
             SettingItem(title: "Backup to iCloud", image: "icloud.and.arrow.up", color: nil) { [weak self] in self?.handleICloudBackup() },
             
-            // Секция Legal
+            // НОВАЯ Кнопка Загрузить
+            SettingItem(title: "Restore from iCloud", image: "icloud.and.arrow.down", color: .systemGreen) { [weak self] in self?.handleICloudRestore() },
+            
             SettingItem(title: "Privacy Policy", image: "shield.lefthalf.filled", color: nil) { [weak self] in self?.openURL("https://example.com/privacy") },
             SettingItem(title: "Terms of Service", image: "doc.text", color: nil) { [weak self] in self?.openURL("https://example.com/terms") },
             SettingItem(title: "Rate Us", image: "star.fill", color: .systemOrange) { [weak self] in self?.requestReview() }
         ]
-        
         items.forEach { settingsData[$0.id] = $0 }
     }
     
@@ -183,7 +185,34 @@ class SettingsViewController: UIViewController {
     }
     
     private func handleICloudBackup() {
-        print("Log: iCloud Backup")
+        ICloudManager.shared.backupToCloud { [weak self] success, message in
+            let alert = UIAlertController(
+                title: success ? "Success" : "Backup Failed",
+                message: message,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self?.present(alert, animated: true)
+        }
+    }
+    
+    private func handleICloudRestore() {
+        let alert = UIAlertController(
+            title: "Restore Data?",
+            message: "This will replace your current tasks with the version from iCloud. This action cannot be undone.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Restore", style: .destructive) { [weak self] _ in
+            ICloudManager.shared.restoreFromCloud { success, message in
+                let resAlert = UIAlertController(title: success ? "Success" : "Error", message: message, preferredStyle: .alert)
+                resAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                self?.present(resAlert, animated: true)
+            }
+        })
+        
+        present(alert, animated: true)
     }
     
     private func openURL(_ urlString: String) {
