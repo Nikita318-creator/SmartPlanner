@@ -8,7 +8,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = MainTabBarController() // Entry point
+        window.rootViewController = MainTabBarController()
+        
+        let isLightMode = UserDefaults.standard.bool(forKey: "isLightMode")
+        window.overrideUserInterfaceStyle = isLightMode ? .light : .dark
+        
         window.makeKeyAndVisible()
         self.window = window
     }
