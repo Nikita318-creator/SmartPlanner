@@ -3,82 +3,67 @@ import Foundation
 class ICloudManager {
     static let shared = ICloudManager()
     
-    // Тот самый ID со скриншота. Сюда вставь полный ID контейнера.
     private let containerID = "iCloud.com.SmartPlanner.app.SmartPlann"
+    private let fileName = "tasks.json"
     
-    private let localFileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tasks.json")
+    private var localFileURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(fileName)
+    }
     
-    func backupToCloud(completion: @escaping (Bool, String) -> Void) {
-        // Проверка: доступно ли облако вообще?
-        DispatchQueue.global().async {
-            guard let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: self.containerID) else {
-                DispatchQueue.main.async {
-                    completion(false, "iCloud container not found. Check Capabilities.")
-                }
-                return
-            }
-            
-            // Путь к папке Documents внутри облака
-            let cloudDocumentsURL = containerURL.appendingPathComponent("Documents")
-            let cloudFileURL = cloudDocumentsURL.appendingPathComponent("tasks.json")
-            
+    private var cloudFileURL: URL? {
+        FileManager.default.url(forUbiquityContainerIdentifier: containerID)?
+            .appendingPathComponent("Documents")
+            .appendingPathComponent(fileName)
+    }
+
+    // Инициализация мониторинга изменений в облаке
+    func setupCloudSync() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCloudChange),
+            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: NSUbiquitousKeyValueStore.default
+        )
+        
+        // Запускаем процесс скачивания, если файла нет локально, но он есть в облаке
+        downloadFromCloudIfNeeded()
+    }
+
+    @objc private func handleCloudChange() {
+        // Логика обработки изменений (например, настроек темы)
+        let isLightMode = NSUbiquitousKeyValueStore.default.bool(forKey: "isLightMode")
+        UserDefaults.standard.set(isLightMode, forKey: "isLightMode")
+    }
+
+    func syncLocalFileToCloud() {
+        guard let cloudURL = cloudFileURL else { return }
+        
+        DispatchQueue.global(qos: .background).async {
             do {
-                // Создаем папку Documents в облаке, если её нет
-                if !FileManager.default.fileExists(atPath: cloudDocumentsURL.path) {
-                    try FileManager.default.createDirectory(at: cloudDocumentsURL, withIntermediateDirectories: true)
+                if FileManager.default.fileExists(atPath: cloudURL.path) {
+                    try FileManager.default.removeItem(at: cloudURL)
                 }
                 
-                // Если файл уже есть — удаляем, чтобы перезаписать свежий бекап
-                if FileManager.default.fileExists(atPath: cloudFileURL.path) {
-                    try FileManager.default.removeItem(at: cloudFileURL)
+                let cloudDirectory = cloudURL.deletingLastPathComponent()
+                if !FileManager.default.fileExists(atPath: cloudDirectory.path) {
+                    try FileManager.default.createDirectory(at: cloudDirectory, withIntermediateDirectories: true)
                 }
                 
-                // Копируем локальный файл в облако
-                try FileManager.default.copyItem(at: self.localFileURL, to: cloudFileURL)
-                
-                DispatchQueue.main.async {
-                    completion(true, "Backup successful!")
-                }
+                try FileManager.default.copyItem(at: self.localFileURL, to: cloudURL)
             } catch {
-                DispatchQueue.main.async {
-                    completion(false, "Error: \(error.localizedDescription)")
-                }
+                print("Cloud sync error: \(error.localizedDescription)")
             }
         }
     }
-    
-    func restoreFromCloud(completion: @escaping (Bool, String) -> Void) {
-        DispatchQueue.global().async {
-            guard let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: self.containerID) else {
-                DispatchQueue.main.async { completion(false, "iCloud not configured.") }
-                return
-            }
-            
-            let cloudFileURL = containerURL.appendingPathComponent("Documents").appendingPathComponent("tasks.json")
-            
-            // Проверяем, есть ли что восстанавливать
-            if !FileManager.default.fileExists(atPath: cloudFileURL.path) {
-                DispatchQueue.main.async { completion(false, "No backup file found in iCloud.") }
-                return
-            }
-            
-            do {
-                // Удаляем старый локальный файл, если он есть
-                if FileManager.default.fileExists(atPath: self.localFileURL.path) {
-                    try FileManager.default.removeItem(at: self.localFileURL)
-                }
-                
-                // Копируем из облака в локальную песочницу
-                try FileManager.default.copyItem(at: cloudFileURL, to: self.localFileURL)
-                
-                DispatchQueue.main.async {
-                    // КРИТИЧНО: просим TaskManager обновить массив tasks из файла
-                    TaskManager.shared.reloadTasks()
-                    completion(true, "Data successfully restored!")
-                }
-            } catch {
-                DispatchQueue.main.async { completion(false, "Restore error: \(error.localizedDescription)") }
-            }
+
+    private func downloadFromCloudIfNeeded() {
+        guard let cloudURL = cloudFileURL else { return }
+        
+        // Если файла нет локально — пробуем забрать из облака
+        if !FileManager.default.fileExists(atPath: localFileURL.path) &&
+            FileManager.default.fileExists(atPath: cloudURL.path) {
+            try? FileManager.default.copyItem(at: cloudURL, to: localFileURL)
+            TaskManager.shared.reloadTasks()
         }
     }
 }

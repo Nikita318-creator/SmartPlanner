@@ -109,6 +109,8 @@ class TaskManager {
         do {
             let data = try JSONEncoder().encode(tasks)
             try data.write(to: fileURL, options: .atomic)
+            // Автоматическая отправка в облако после сохранения локально
+            ICloudManager.shared.syncLocalFileToCloud()
         } catch {
             print("Save error: \(error)")
         }

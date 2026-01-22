@@ -12,7 +12,7 @@ class SettingsViewController: UIViewController {
         let title: String
         let image: String
         let color: UIColor?
-        let hasSwitch: Bool // Добавляем флаг для тогла
+        let hasSwitch: Bool
         let action: (() -> Void)?
     }
     
@@ -40,9 +40,8 @@ class SettingsViewController: UIViewController {
             SettingItem(title: "Light Mode", image: "sun.max.fill", color: .systemYellow, hasSwitch: true, action: nil),
             
             // Секция Sync
+            SettingItem(title: "iCloud Sync", image: "icloud.fill", color: .systemBlue, hasSwitch: true, action: nil),
             SettingItem(title: "Import from Calendar", image: "calendar.badge.plus", color: nil, hasSwitch: false) { [weak self] in self?.handleCalendarImport() },
-            SettingItem(title: "Backup to iCloud", image: "icloud.and.arrow.up", color: nil, hasSwitch: false) { [weak self] in self?.handleICloudBackup() },
-            SettingItem(title: "Restore from iCloud", image: "icloud.and.arrow.down", color: .systemGreen, hasSwitch: false) { [weak self] in self?.handleICloudRestore() },
             
             // Секция Legal
             SettingItem(title: "Privacy Policy", image: "shield.lefthalf.filled", color: nil, hasSwitch: false) { [weak self] in self?.openURL("https://example.com/privacy") },
@@ -65,10 +64,16 @@ class SettingsViewController: UIViewController {
             cell.contentConfiguration = content
             
             if item.hasSwitch {
-                let themeSwitch = UISwitch()
-                themeSwitch.isOn = UserDefaults.standard.bool(forKey: "isLightMode")
-                themeSwitch.addTarget(self, action: #selector(self?.themeChanged(_:)), for: .valueChanged)
-                let configuration = UICellAccessory.CustomViewConfiguration(customView: themeSwitch, placement: .trailing())
+                let controlSwitch = UISwitch()
+                if item.title == "Light Mode" {
+                    controlSwitch.isOn = UserDefaults.standard.bool(forKey: "isLightMode")
+                    controlSwitch.addTarget(self, action: #selector(self?.themeChanged(_:)), for: .valueChanged)
+                } else {
+                    // iCloud Sync: по умолчанию включено (isCloudDisabled = false)
+                    controlSwitch.isOn = !UserDefaults.standard.bool(forKey: "isCloudDisabled")
+                    controlSwitch.addTarget(self, action: #selector(self?.cloudSyncChanged(_:)), for: .valueChanged)
+                }
+                let configuration = UICellAccessory.CustomViewConfiguration(customView: controlSwitch, placement: .trailing())
                 cell.accessories = [.customView(configuration: configuration)]
             } else {
                 cell.accessories = [.disclosureIndicator()]
@@ -111,7 +116,7 @@ class SettingsViewController: UIViewController {
         snapshot.appendSections(["APPEARANCE", "SYNCHRONIZATION", "LEGAL & FEEDBACK"])
         
         let appearanceIDs = settingsData.values.filter { $0.title == "Light Mode" }.map { $0.id }
-        let syncIDs = settingsData.values.filter { $0.image.contains("calendar") || $0.image.contains("icloud") }.map { $0.id }
+        let syncIDs = settingsData.values.filter { $0.title == "iCloud Sync" || $0.title == "Import from Calendar" }.map { $0.id }
         let legalIDs = settingsData.values.filter { !appearanceIDs.contains($0.id) && !syncIDs.contains($0.id) }.map { $0.id }
         
         snapshot.appendItems(appearanceIDs, toSection: "APPEARANCE")
@@ -125,108 +130,52 @@ class SettingsViewController: UIViewController {
 
     @objc private func themeChanged(_ sender: UISwitch) {
         UserDefaults.standard.set(sender.isOn, forKey: "isLightMode")
-        
-        // Применяем тему ко всем окнам приложения мгновенно
         view.window?.windowScene?.windows.forEach { window in
             window.overrideUserInterfaceStyle = sender.isOn ? .light : .dark
         }
     }
     
+    @objc private func cloudSyncChanged(_ sender: UISwitch) {
+        // Если switch ON (включено), значит Disabled = false
+        UserDefaults.standard.set(!sender.isOn, forKey: "isCloudDisabled")
+        if sender.isOn {
+            ICloudManager.shared.syncLocalFileToCloud()
+        }
+    }
+    
     private func handleCalendarImport() {
         let eventStore = EKEventStore()
+        let completion: (Bool, Error?) -> Void = { [weak self] granted, _ in
+            if granted {
+                DispatchQueue.main.async { self?.fetchCalendarEvents(store: eventStore) }
+            }
+        }
         
-        // Проверка разрешений в зависимости от версии iOS
         if #available(iOS 17.0, *) {
-            eventStore.requestFullAccessToEvents { [weak self] granted, error in
-                if granted {
-                    self?.fetchCalendarEvents(store: eventStore)
-                }
-            }
+            eventStore.requestFullAccessToEvents(completion: completion)
         } else {
-            eventStore.requestAccess(to: .event) { [weak self] granted, error in
-                if granted {
-                    self?.fetchCalendarEvents(store: eventStore)
-                }
-            }
+            eventStore.requestAccess(to: .event, completion: completion)
         }
     }
 
     private func fetchCalendarEvents(store: EKEventStore) {
-        // Берем события на месяц вперед
         let startDate = Date()
         let endDate = Calendar.current.date(byAdding: .month, value: 1, to: startDate)!
-        
         let predicate = store.predicateForEvents(withStart: startDate, end: endDate, calendars: nil)
         let events = store.events(matching: predicate)
         
-        var newTasksAdded = 0
-        
+        var addedCount = 0
         for event in events {
-            // Проверяем, не добавляли ли мы это событие ранее (по заголовку и дате),
-            // чтобы избежать дубликатов при повторном нажатии
-            let isAlreadyAdded = TaskManager.shared.tasks.contains {
-                $0.title == event.title && $0.date == event.startDate
-            }
-            
-            if !isAlreadyAdded {
-                let newTask = SmartTask(
-                    id: UUID(),
-                    title: event.title ?? "Untitled Event",
-                    notes: event.notes ?? "Imported from Calendar",
-                    date: event.startDate,
-                    priority: .medium, // Дефолтный приоритет для импорта
-                    category: .personal, // Дефолтная категория
-                    isCompleted: false
-                )
-                
-                // Используем DispatchQueue.main, так как addTask шлет нотификацию для UI
-                DispatchQueue.main.async {
-                    TaskManager.shared.addTask(newTask)
-                }
-                newTasksAdded += 1
+            let exists = TaskManager.shared.tasks.contains { $0.title == event.title && $0.date == event.startDate }
+            if !exists {
+                let task = SmartTask(id: UUID(), title: event.title ?? "Untitled", notes: event.notes ?? "", date: event.startDate, priority: .medium, category: .personal, isCompleted: false)
+                TaskManager.shared.addTask(task)
+                addedCount += 1
             }
         }
         
-        // Опционально: показать алерт о завершении
-        DispatchQueue.main.async {
-            let alert = UIAlertController(
-                title: "Import Complete",
-                message: "Added \(newTasksAdded) new tasks from your calendar.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            self.present(alert, animated: true)
-        }
-    }
-    
-    private func handleICloudBackup() {
-        ICloudManager.shared.backupToCloud { [weak self] success, message in
-            let alert = UIAlertController(
-                title: success ? "Success" : "Backup Failed",
-                message: message,
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            self?.present(alert, animated: true)
-        }
-    }
-    
-    private func handleICloudRestore() {
-        let alert = UIAlertController(
-            title: "Restore Data?",
-            message: "This will replace your current tasks with the version from iCloud. This action cannot be undone.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Restore", style: .destructive) { [weak self] _ in
-            ICloudManager.shared.restoreFromCloud { success, message in
-                let resAlert = UIAlertController(title: success ? "Success" : "Error", message: message, preferredStyle: .alert)
-                resAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                self?.present(resAlert, animated: true)
-            }
-        })
-        
+        let alert = UIAlertController(title: "Import", message: "Added \(addedCount) tasks.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
     
