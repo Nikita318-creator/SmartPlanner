@@ -4,7 +4,6 @@ class AddTaskViewController: UIViewController {
     
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
     
-    // Единый форматтер для всего экрана
     private let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateStyle = .medium
@@ -15,10 +14,16 @@ class AddTaskViewController: UIViewController {
     private let titleField: UITextField = {
         let f = UITextField()
         f.placeholder = "Task Name"
-        f.borderStyle = .none
-        f.font = .systemFont(ofSize: 17)
-        f.returnKeyType = .done
+        f.font = .systemFont(ofSize: 17, weight: .medium)
         return f
+    }()
+    
+    // МНОГОСТРОЧНОЕ ПОЛЕ ДЛЯ DESCRIPTION
+    private let notesView: UITextView = {
+        let tv = UITextView()
+        tv.font = .systemFont(ofSize: 16)
+        tv.backgroundColor = .clear
+        return tv
     }()
     
     private let datePicker: UIDatePicker = {
@@ -45,49 +50,32 @@ class AddTaskViewController: UIViewController {
         setupUI()
         setupKeyboardObservers()
         setupTapToDismiss()
-        
         datePicker.addTarget(self, action: #selector(dateChanged), for: .valueChanged)
     }
     
     private func setupUI() {
         title = "New Task"
         view.backgroundColor = .systemGroupedBackground
-        
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(saveTapped))
         
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.delegate = self
         tableView.dataSource = self
-        tableView.keyboardDismissMode = .onDrag
-        
         view.addSubview(tableView)
+        
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        
-        titleField.delegate = self
     }
 
     @objc private func dateChanged() {
-        // Обновляем только нужную ячейку, чтобы не дергать всю таблицу
-        let indexPath = IndexPath(row: 0, section: 1)
-        if let cell = tableView.cellForRow(at: indexPath) {
-            cell.textLabel?.text = dateFormatter.string(from: datePicker.date)
+        if let dateLabel = view.viewWithTag(999) as? UILabel {
+            dateLabel.text = dateFormatter.string(from: datePicker.date)
         }
-    }
-
-    private func setupTapToDismiss() {
-        let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
-        tap.cancelsTouchesInView = false
-        view.addGestureRecognizer(tap)
-    }
-
-    @objc private func dismissKeyboard() {
-        view.endEditing(true)
     }
 
     @objc private func saveTapped() {
@@ -99,6 +87,7 @@ class AddTaskViewController: UIViewController {
         let newTask = SmartTask(
             id: UUID(),
             title: title,
+            notes: notesView.text ?? "", // СОХРАНЯЕМ ОПИСАНИЕ
             date: datePicker.date,
             priority: TaskPriority.allCases[prioritySegment.selectedSegmentIndex],
             category: TaskCategory.allCases[categorySegment.selectedSegmentIndex],
@@ -109,44 +98,41 @@ class AddTaskViewController: UIViewController {
         dismiss(animated: true)
     }
     
-    @objc private func cancelTapped() {
-        dismiss(animated: true)
-    }
+    @objc private func cancelTapped() { dismiss(animated: true) }
     
     private func shakeView(_ view: UIView) {
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
-        animation.timingFunction = CAMediaTimingFunction(name: .linear)
         animation.duration = 0.5
         animation.values = [-10.0, 10.0, -10.0, 10.0, -5.0, 5.0, 0.0]
         view.layer.add(animation, forKey: "shake")
     }
 
+    private func setupTapToDismiss() {
+        let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
+    }
+
+    @objc private func dismissKeyboard() { view.endEditing(true) }
+
     private func setupKeyboardObservers() {
         NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] notif in
             guard let kbFrame = notif.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
             self?.tableView.contentInset.bottom = kbFrame.height
-            self?.tableView.verticalScrollIndicatorInsets.bottom = kbFrame.height
         }
         NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
             self?.tableView.contentInset.bottom = 0
-            self?.tableView.verticalScrollIndicatorInsets.bottom = 0
         }
-    }
-}
-
-extension AddTaskViewController: UITextFieldDelegate {
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
-        return true
     }
 }
 
 extension AddTaskViewController: UITableViewDataSource, UITableViewDelegate {
-    func numberOfSections(in tableView: UITableView) -> Int { 3 }
+    func numberOfSections(in tableView: UITableView) -> Int { 4 } // СЕКЦИЙ ТЕПЕРЬ 4
+    
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { 1 }
     
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        return ["TASK INFO", "DEADLINE", "PRIORITY & CATEGORY"][section]
+        return ["TITLE", "DESCRIPTION", "DEADLINE", "SETTINGS"][section]
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -160,25 +146,44 @@ extension AddTaskViewController: UITableViewDataSource, UITableViewDelegate {
             NSLayoutConstraint.activate([
                 titleField.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: 16),
                 titleField.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -16),
-                titleField.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor),
-                titleField.heightAnchor.constraint(equalToConstant: 44)
+                titleField.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor)
             ])
         case 1:
-            // Теперь здесь всегда актуальный формат через форматтер
-            cell.textLabel?.text = dateFormatter.string(from: datePicker.date)
-            cell.textLabel?.font = .systemFont(ofSize: 15)
-            cell.accessoryView = datePicker
+            cell.contentView.addSubview(notesView)
+            notesView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                notesView.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: 8),
+                notesView.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: 12),
+                notesView.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -12),
+                notesView.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: -8),
+                cell.contentView.heightAnchor.constraint(equalToConstant: 100)
+            ])
         case 2:
-            let stack = UIStackView(arrangedSubviews: [prioritySegment, categorySegment])
+            let stack = UIStackView()
             stack.axis = .vertical
-            stack.spacing = 10
             stack.translatesAutoresizingMaskIntoConstraints = false
+            let topL = UILabel(); topL.text = "Date & Time"; topL.font = .systemFont(ofSize: 14)
+            let botL = UILabel(); botL.text = dateFormatter.string(from: datePicker.date); botL.font = .systemFont(ofSize: 12); botL.textColor = .secondaryLabel; botL.tag = 999
+            stack.addArrangedSubview(topL); stack.addArrangedSubview(botL)
+            cell.contentView.addSubview(stack)
+            cell.contentView.addSubview(datePicker)
+            datePicker.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                stack.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: 16),
+                stack.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor),
+                datePicker.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -16),
+                datePicker.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor),
+                cell.contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 54)
+            ])
+        case 3:
+            let stack = UIStackView(arrangedSubviews: [prioritySegment, categorySegment])
+            stack.axis = .vertical; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
             cell.contentView.addSubview(stack)
             NSLayoutConstraint.activate([
-                stack.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: 10),
+                stack.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: 12),
                 stack.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: 16),
                 stack.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -16),
-                stack.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: -10)
+                stack.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: -12)
             ])
         default: break
         }

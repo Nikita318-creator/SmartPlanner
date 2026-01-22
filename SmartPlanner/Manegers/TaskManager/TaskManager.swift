@@ -34,6 +34,7 @@ enum TaskCategory: String, CaseIterable, Codable {
 struct SmartTask: Codable, Hashable {
     let id: UUID
     var title: String
+    var notes: String // ДОБАВИЛ ПОЛЕ ОПИСАНИЯ
     var date: Date
     var priority: TaskPriority
     var category: TaskCategory
@@ -53,15 +54,11 @@ class TaskManager {
         loadTasks()
     }
     
-    // МЕТОД, КОТОРЫЙ Я СЛУЧАЙНО УДАЛИЛ:
-    // Согласно ТЗ (пункт 2.2), это основа для AI Recommendations
     func getSmartSchedule() -> [SmartTask] {
         return tasks.filter { !$0.isCompleted }.sorted {
-            // Сначала по весу приоритета (High > Medium > Low)
             if $0.priority.weight != $1.priority.weight {
                 return $0.priority.weight > $1.priority.weight
             }
-            // Затем по дате дедлайна (ближайшие выше)
             return $0.date < $1.date
         }
     }
@@ -99,6 +96,7 @@ class TaskManager {
         do {
             let data = try Data(contentsOf: fileURL)
             tasks = try JSONDecoder().decode([SmartTask].self, from: data)
+            print("Successfully loaded \(tasks.count) tasks")
         } catch {
             print("New storage initialized")
         }
