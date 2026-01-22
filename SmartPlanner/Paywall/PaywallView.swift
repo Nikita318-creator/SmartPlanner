@@ -31,6 +31,7 @@ class PaywallView: UIView {
         label.text = "SMART PLANNER PRO"
         label.font = .systemFont(ofSize: 28, weight: .black)
         label.textAlignment = .center
+        label.textColor = .label
         return label
     }()
     
@@ -47,7 +48,7 @@ class PaywallView: UIView {
     private let optionsStack: UIStackView = {
         let stack = UIStackView()
         stack.axis = .vertical
-        stack.spacing = 10
+        stack.spacing = 12
         return stack
     }()
     
@@ -61,11 +62,20 @@ class PaywallView: UIView {
         return button
     }()
     
+    private let footerStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.distribution = .equalSpacing
+        stack.spacing = 20
+        return stack
+    }()
+    
     // MARK: - Init
     
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupLayout()
+        setupFooter()
         refreshProducts()
     }
     
@@ -76,10 +86,12 @@ class PaywallView: UIView {
         applyGradient()
     }
     
+    // MARK: - Setup
+    
     private func setupLayout() {
         backgroundColor = AppDesign.backgroundColor
         
-        [headerImageView, gradientOverlay, contentStack, subscribeButton].forEach {
+        [headerImageView, gradientOverlay, contentStack, subscribeButton, footerStack].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
             addSubview($0)
         }
@@ -96,6 +108,7 @@ class PaywallView: UIView {
             headerImageView.trailingAnchor.constraint(equalTo: trailingAnchor),
             headerImageView.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.45),
             
+            // Градиент перекрывает нижнюю часть картинки для плавного ухода в цвет фона
             gradientOverlay.bottomAnchor.constraint(equalTo: headerImageView.bottomAnchor),
             gradientOverlay.leadingAnchor.constraint(equalTo: leadingAnchor),
             gradientOverlay.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -105,10 +118,14 @@ class PaywallView: UIView {
             contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
             contentStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
             
-            subscribeButton.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -25),
+            subscribeButton.topAnchor.constraint(equalTo: contentStack.bottomAnchor, constant: 24),
             subscribeButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
             subscribeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
-            subscribeButton.heightAnchor.constraint(equalToConstant: 56)
+            subscribeButton.heightAnchor.constraint(equalToConstant: 56),
+            
+            footerStack.topAnchor.constraint(equalTo: subscribeButton.bottomAnchor, constant: 16),
+            footerStack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            footerStack.bottomAnchor.constraint(lessThanOrEqualTo: safeAreaLayoutGuide.bottomAnchor, constant: -10)
         ])
     }
     
@@ -116,17 +133,47 @@ class PaywallView: UIView {
         gradientOverlay.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
         let gradient = CAGradientLayer()
         gradient.frame = gradientOverlay.bounds
-        gradient.colors = [AppDesign.backgroundColor.withAlphaComponent(0).cgColor, AppDesign.backgroundColor.cgColor]
+        gradient.colors = [
+            AppDesign.backgroundColor.withAlphaComponent(0).cgColor,
+            AppDesign.backgroundColor.cgColor
+        ]
         gradient.locations = [0.0, 1.0]
         gradientOverlay.layer.addSublayer(gradient)
     }
+    
+    private func setupFooter() {
+        let termsBtn = createFooterButton(title: "Terms of Use", action: #selector(didTapTerms))
+        let privacyBtn = createFooterButton(title: "Privacy Policy", action: #selector(didTapPrivacy))
+        let restoreBtn = createFooterButton(title: "Restore", action: #selector(didTapRestore))
+        
+        [termsBtn, privacyBtn, restoreBtn].forEach { footerStack.addArrangedSubview($0) }
+    }
+    
+    private func createFooterButton(title: String, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        let attrTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: UIFont.systemFont(ofSize: 12, weight: .medium),
+                .foregroundColor: UIColor.secondaryLabel,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ]
+        )
+        button.setAttributedTitle(attrTitle, for: .normal)
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+    
+    // MARK: - Logic
     
     func refreshProducts() {
         let storeProducts = IAPManager.shared.getProducts()
         optionsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         optionViews.removeAll()
         
-        [SubsIDs.weeklySubsId, SubsIDs.monthlySubsId].forEach { id in
+        let ids = [SubsIDs.weeklySubsId, SubsIDs.monthlySubsId]
+        
+        ids.forEach { id in
             let product = storeProducts.first(where: { $0.productId == id })
             let optionView = SubscriptionOptionView(productId: id, product: product)
             
@@ -146,6 +193,8 @@ class PaywallView: UIView {
         optionViews.forEach { $0.isSelected = ($0 == tappedView) }
     }
     
+    // MARK: - Actions
+    
     @objc private func didTapSubscribe() {
         subscribeButton.isEnabled = false
         IAPManager.shared.purchase(productId: selectedProductId) { [weak self] result in
@@ -158,54 +207,23 @@ class PaywallView: UIView {
             }
         }
     }
-}
-
-// MARK: - Option View
-
-class SubscriptionOptionView: UIView {
-    let productId: String
-    var isSelected: Bool = false { didSet { updateStyle() } }
     
-    private let titleLabel = UILabel()
-    private let priceLabel = UILabel()
-    
-    init(productId: String, product: ApphudProduct?) {
-        self.productId = productId
-        super.init(frame: .zero)
-        
-        titleLabel.text = productId == SubsIDs.weeklySubsId ? "WEEKLY" : "MONTHLY"
-        titleLabel.font = .systemFont(ofSize: 14, weight: .black)
-        
-        priceLabel.text = product?.skProduct?.localizedPrice ?? "-/-"
-        priceLabel.font = .systemFont(ofSize: 18, weight: .bold)
-        
-        setupLayout()
-    }
-    
-    required init?(coder: NSCoder) { fatalError() }
-    
-    private func setupLayout() {
-        backgroundColor = AppDesign.cardBackground
-        layer.cornerRadius = AppDesign.cornerRadius
-        AppDesign.applyShadow(to: self)
-        
-        [titleLabel, priceLabel].forEach {
-            $0.translatesAutoresizingMaskIntoConstraints = false
-            addSubview($0)
+    @objc private func didTapRestore() {
+        IAPManager.shared.restorePurchases { [weak self] result in
+            DispatchQueue.main.async {
+                if result == .restored {
+                    NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
+                    self?.removeFromSuperview()
+                }
+            }
         }
-        
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            priceLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-            priceLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: 64)
-        ])
     }
     
-    private func updateStyle() {
-        layer.borderWidth = isSelected ? 3 : 0
-        layer.borderColor = AppDesign.primaryColor.cgColor
-        titleLabel.textColor = isSelected ? AppDesign.primaryColor : .label
+    @objc private func didTapTerms() {
+        if let url = URL(string: "https://yourdomain.com/terms") { UIApplication.shared.open(url) }
+    }
+    
+    @objc private func didTapPrivacy() {
+        if let url = URL(string: "https://yourdomain.com/privacy") { UIApplication.shared.open(url) }
     }
 }
