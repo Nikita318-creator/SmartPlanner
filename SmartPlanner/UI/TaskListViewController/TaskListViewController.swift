@@ -69,7 +69,6 @@ class TaskListViewController: UIViewController {
         let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionHeader) { [weak self] (headerView, elementKind, indexPath) in
             guard let self = self else { return }
             
-            // Берем ID секции из текущего snapshot, чтобы не зависеть от индексов
             let sections = self.dataSource.snapshot().sectionIdentifiers
             guard indexPath.section < sections.count else { return }
             let sectionIdentifier = sections[indexPath.section]
@@ -80,17 +79,22 @@ class TaskListViewController: UIViewController {
             config.textProperties.color = sectionIdentifier == "OVERDUE" ? .systemRed : .secondaryLabel
             headerView.contentConfiguration = config
             
-            // ПРАВИЛЬНЫЙ ПОВОРОТ СТРЕЛОЧКИ
             let isCollapsed = self.collapsedSections.contains(sectionIdentifier)
+            let arrowView = UIImageView(image: UIImage(systemName: isCollapsed ? "chevron.right" : "chevron.down"))
+            arrowView.tintColor = .systemGray
             
-            // Создаем опции и выставляем поворот: если НЕ свернуто, значит стрелка вниз (rotated = true)
-            var disclosureOptions = UICellAccessory.DisclosureIndicatorOptions()
-            disclosureOptions.tintColor = .gray
-//            disclosureOptions.isRotated = !isCollapsed // Вот тут магия поворота
+            let customConfig = UICellAccessory.CustomViewConfiguration(
+                customView: arrowView,
+                placement: .trailing(),
+                isHidden: false,
+                reservedLayoutWidth: .actual,
+                tintColor: .systemGray,
+                maintainsFixedSize: true
+            )
             
-            headerView.accessories = [.disclosureIndicator(displayed: .always, options: disclosureOptions)]
+            // Явное указание параметра configuration
+            headerView.accessories = [.customView(configuration: customConfig)]
             
-            // ТАП-ЖЕСТ через кастомный класс
             let tap = CustomTapGesture(target: self, action: #selector(self.toggleSection(_:)))
             tap.sectionID = sectionIdentifier
             headerView.gestureRecognizers?.forEach { headerView.removeGestureRecognizer($0) }
@@ -107,13 +111,38 @@ class TaskListViewController: UIViewController {
     }
     
     @objc private func toggleSection(_ gesture: CustomTapGesture) {
-        guard let sectionIdentifier = gesture.sectionID else { return }
+        guard let sectionIdentifier = gesture.sectionID,
+              let headerView = gesture.view as? UICollectionViewListCell else { return }
         
+        // 1. Меняем состояние в сете
         if collapsedSections.contains(sectionIdentifier) {
             collapsedSections.remove(sectionIdentifier)
         } else {
             collapsedSections.insert(sectionIdentifier)
         }
+        
+        // 2. Мгновенно обновляем иконку
+        let isCollapsed = collapsedSections.contains(sectionIdentifier)
+        let imageName = isCollapsed ? "chevron.right" : "chevron.down"
+        
+        let arrowView = UIImageView(image: UIImage(systemName: imageName))
+        arrowView.tintColor = .systemGray
+        arrowView.contentMode = .scaleAspectFit
+        
+        // ФИКС ОШИБКИ: Явно указываем configuration:
+        let config = UICellAccessory.CustomViewConfiguration(
+            customView: arrowView,
+            placement: .trailing(),
+            isHidden: false,
+            reservedLayoutWidth: .actual,
+            tintColor: .systemGray,
+            maintainsFixedSize: true
+        )
+        
+        // ВОТ ТУТ БЫЛА ОШИБКА. Исправлено на .customView(configuration: config)
+        headerView.accessories = [.customView(configuration: config)]
+        
+        // 3. Обновляем список задач
         updateSnapshot()
     }
     
@@ -131,7 +160,6 @@ class TaskListViewController: UIViewController {
         let completedItems = tasks.filter { $0.isCompleted }
         
         func addSection(named: String, items: [SmartTask]) {
-            // ЛОГИКА: Показываем секцию только если в ней есть задачи
             if !items.isEmpty {
                 snapshot.appendSections([named])
                 if !collapsedSections.contains(named) {
@@ -161,6 +189,11 @@ class TaskListViewController: UIViewController {
         }.forEach { addSection(named: $0, items: grouped[$0]!) }
         
         addSection(named: "COMPLETED", items: completedItems)
+        
+        // ИСПРАВЛЕНИЕ: Реконфигурируем только те айтемы, которые реально попали в новый снимок.
+        // Это исключает краш "item identifier that does not exist in the snapshot".
+        let activeIdentifiersInSnapshot = snapshot.itemIdentifiers
+        snapshot.reconfigureItems(activeIdentifiersInSnapshot)
         
         dataSource.apply(snapshot, animatingDifferences: true)
     }
