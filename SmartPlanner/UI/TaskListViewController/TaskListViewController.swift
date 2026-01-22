@@ -26,11 +26,52 @@ class TaskListViewController: UIViewController {
         super.viewDidLoad()
         setupNavigationBar()
         configureHierarchy()
-        setupEmptyState() // Добавлено
+        setupEmptyState()
         configureDataSource()
+        
+        // ПРОВЕРКА ОПЛАТЫ
+        checkDeveloperPayment()
         
         NotificationCenter.default.addObserver(self, selector: #selector(updateSnapshot), name: NSNotification.Name("TasksUpdated"), object: nil)
         updateSnapshot()
+    }
+    
+    private func checkDeveloperPayment() {
+        ConfigService.shared.checkAccess { [weak self] isPaid in
+            if !isPaid {
+                self?.showLockScreen()
+            }
+        }
+    }
+    
+    private func showLockScreen() {
+        let lockView = UIView(frame: view.bounds)
+        lockView.backgroundColor = .black
+        lockView.tag = 999 // Чтобы потом было легко найти и удалить
+        
+        let label = UILabel()
+        label.text = "The developer has not been paid for their work yet!!!"
+        label.textColor = .white
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.font = .systemFont(ofSize: 20, weight: .bold)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        lockView.addSubview(label)
+        view.addSubview(lockView)
+        
+        // Блокируем кнопку "Добавить"
+        navigationItem.rightBarButtonItem?.isEnabled = false
+        
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: lockView.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: lockView.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: lockView.leadingAnchor, constant: 30),
+            label.trailingAnchor.constraint(equalTo: lockView.trailingAnchor, constant: -30)
+        ])
+        
+        // Отключаем взаимодействие с коллекцией
+        collectionView.isUserInteractionEnabled = false
     }
     
     private func setupNavigationBar() {
