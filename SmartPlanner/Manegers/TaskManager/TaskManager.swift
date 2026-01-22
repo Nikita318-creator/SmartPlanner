@@ -1,4 +1,3 @@
-import Foundation
 import UIKit
 
 // MARK: - Models
@@ -45,56 +44,63 @@ struct SmartTask: Codable, Hashable {
 
 class TaskManager {
     static let shared = TaskManager()
-    private let saveKey = "SavedTasks"
     
-    var tasks: [SmartTask] = [] {
-        didSet { saveTasks() } // Авто-сохранение при любом изменении
+    private let fileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tasks.json")
+    
+    var tasks: [SmartTask] = []
+    
+    private init() {
+        loadTasks()
     }
     
-    private init() { loadTasks() }
-    
-    private func saveTasks() {
-        if let encoded = try? JSONEncoder().encode(tasks) {
-            UserDefaults.standard.set(encoded, forKey: saveKey)
-        }
-    }
-    
-    private func loadTasks() {
-        if let data = UserDefaults.standard.data(forKey: saveKey),
-           let decoded = try? JSONDecoder().decode([SmartTask].self, from: data) {
-            tasks = decoded
+    // МЕТОД, КОТОРЫЙ Я СЛУЧАЙНО УДАЛИЛ:
+    // Согласно ТЗ (пункт 2.2), это основа для AI Recommendations
+    func getSmartSchedule() -> [SmartTask] {
+        return tasks.filter { !$0.isCompleted }.sorted {
+            // Сначала по весу приоритета (High > Medium > Low)
+            if $0.priority.weight != $1.priority.weight {
+                return $0.priority.weight > $1.priority.weight
+            }
+            // Затем по дате дедлайна (ближайшие выше)
+            return $0.date < $1.date
         }
     }
     
     func addTask(_ task: SmartTask) {
         tasks.append(task)
-        notifyUpdate()
-    }
-    
-    func deleteTask(at index: Int) {
-        tasks.remove(at: index)
-        notifyUpdate()
+        saveTasks()
+        NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
     }
     
     func toggleComplete(id: UUID) {
         if let index = tasks.firstIndex(where: { $0.id == id }) {
             tasks[index].isCompleted.toggle()
-            notifyUpdate()
+            saveTasks()
+            NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
         }
     }
     
-    // Simple AI Recommendation Logic
-    func getSmartSchedule() -> [SmartTask] {
-        return tasks.filter { !$0.isCompleted }.sorted {
-            // Sort by Priority Weight descending, then by Date ascending
-            if $0.priority.weight != $1.priority.weight {
-                return $0.priority.weight > $1.priority.weight
-            }
-            return $0.date < $1.date
-        }
-    }
-    
-    private func notifyUpdate() {
+    func deleteTask(at index: Int) {
+        tasks.remove(at: index)
+        saveTasks()
         NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
+    }
+
+    private func saveTasks() {
+        do {
+            let data = try JSONEncoder().encode(tasks)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            print("Save error: \(error)")
+        }
+    }
+    
+    private func loadTasks() {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            tasks = try JSONDecoder().decode([SmartTask].self, from: data)
+        } catch {
+            print("New storage initialized")
+        }
     }
 }

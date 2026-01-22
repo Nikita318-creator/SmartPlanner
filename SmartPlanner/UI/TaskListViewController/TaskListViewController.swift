@@ -2,7 +2,6 @@ import UIKit
 
 class TaskListViewController: UIViewController {
     
-    // Modern Collection View
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, UUID>!
     
@@ -12,7 +11,6 @@ class TaskListViewController: UIViewController {
         configureHierarchy()
         configureDataSource()
         
-        // Listen for data changes
         NotificationCenter.default.addObserver(self, selector: #selector(updateSnapshot), name: NSNotification.Name("TasksUpdated"), object: nil)
     }
     
@@ -27,22 +25,21 @@ class TaskListViewController: UIViewController {
         navigationController?.navigationBar.prefersLargeTitles = true
         
         let appearance = UINavigationBarAppearance()
-        appearance.configureWithTransparentBackground()
+        appearance.configureWithDefaultBackground()
         appearance.backgroundColor = AppDesign.backgroundColor
-        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.label]
         
         navigationController?.navigationBar.standardAppearance = appearance
         navigationController?.navigationBar.scrollEdgeAppearance = appearance
         
-        let addButton = UIButton(type: .system)
-        addButton.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        // Кнопка добавления в бизнес-стиле (акцентная, но строгая)
+        let addButton = UIBarButtonItem(
+            image: UIImage(systemName: "plus.circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)),
+            style: .plain,
+            target: self,
+            action: #selector(didTapAdd)
+        )
         addButton.tintColor = AppDesign.primaryColor
-        // Увеличиваем кнопку визуально
-        let config = UIImage.SymbolConfiguration(pointSize: 28, weight: .bold)
-        addButton.setPreferredSymbolConfiguration(config, forImageIn: .normal)
-        addButton.addTarget(self, action: #selector(didTapAdd), for: .touchUpInside)
-        
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: addButton)
+        navigationItem.rightBarButtonItem = addButton
     }
     
     private func configureHierarchy() {
@@ -54,68 +51,75 @@ class TaskListViewController: UIViewController {
     }
     
     private func createLayout() -> UICollectionViewLayout {
-        // Modern List Layout
         let config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         return UICollectionViewCompositionalLayout { sectionIndex, layoutEnvironment in
             var configuration = config
-            configuration.backgroundColor = AppDesign.backgroundColor
+            configuration.backgroundColor = .clear
             configuration.showsSeparators = false
             
-            // Swipe Actions
+            // Бизнес-логика: удаление через свайп с подтверждением
             configuration.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
                 guard let self = self, let taskID = self.dataSource.itemIdentifier(for: indexPath) else { return nil }
                 
-                let delete = UIContextualAction(style: .destructive, title: "Delete") { _, _, completion in
+                let delete = UIContextualAction(style: .destructive, title: nil) { _, _, completion in
+                    // Находим индекс и удаляем из менеджера (сохранение внутри менеджера)
                     if let index = TaskManager.shared.tasks.firstIndex(where: { $0.id == taskID }) {
                         TaskManager.shared.deleteTask(at: index)
                     }
                     completion(true)
                 }
+                delete.image = UIImage(systemName: "trash.fill")
+                delete.backgroundColor = .systemRed
+                
                 return UISwipeActionsConfiguration(actions: [delete])
             }
             
             let section = NSCollectionLayoutSection.list(using: configuration, layoutEnvironment: layoutEnvironment)
-            section.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 0, bottom: 20, trailing: 0)
-            section.interGroupSpacing = 12 // Расстояние между карточками
+            section.contentInsets = NSDirectionalEdgeInsets(top: 16, leading: 0, bottom: 16, trailing: 0)
+            section.interGroupSpacing = 8
             return section
         }
     }
     
     private func configureDataSource() {
-        // Registration
         let cellRegistration = UICollectionView.CellRegistration<TaskCardCell, UUID> { (cell, indexPath, id) in
             if let task = TaskManager.shared.tasks.first(where: { $0.id == id }) {
                 cell.configure(with: task)
             }
         }
         
-        dataSource = UICollectionViewDiffableDataSource<Int, UUID>(collectionView: collectionView) {
-            (collectionView: UICollectionView, indexPath: IndexPath, identifier: UUID) -> UICollectionViewCell? in
-            return collectionView.dequeueConfiguredReusableCell(using: cellRegistration, for: indexPath, item: identifier)
+        dataSource = UICollectionViewDiffableDataSource<Int, UUID>(collectionView: collectionView) { cv, idx, id in
+            cv.dequeueConfiguredReusableCell(using: cellRegistration, for: idx, item: id)
         }
     }
     
     @objc func updateSnapshot() {
         var snapshot = NSDiffableDataSourceSnapshot<Int, UUID>()
         snapshot.appendSections([0])
-        snapshot.appendItems(TaskManager.shared.tasks.map { $0.id })
+        // Сортировка: Сначала невыполненные по приоритету (Business Logic)
+        let sortedTasks = TaskManager.shared.tasks.sorted {
+            if $0.isCompleted != $1.isCompleted { return !$0.isCompleted }
+            return $0.priority.weight > $1.priority.weight
+        }
+        snapshot.appendItems(sortedTasks.map { $0.id })
         dataSource.apply(snapshot, animatingDifferences: true)
     }
     
     @objc func didTapAdd() {
         let vc = AddTaskViewController()
-        present(UINavigationController(rootViewController: vc), animated: true)
+        let nav = UINavigationController(rootViewController: vc)
+        // Для iPad/iPhone Plus используем форму листа
+        nav.modalPresentationStyle = .formSheet
+        present(nav, animated: true)
     }
 }
 
 extension TaskListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard let taskID = dataSource.itemIdentifier(for: indexPath) else { return }
-        collectionView.deselectItem(at: indexPath, animated: true)
         
-        // Haptic Feedback (Вибрация при нажатии)
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
+        let generator = UISelectionFeedbackGenerator()
+        generator.selectionChanged()
         
         TaskManager.shared.toggleComplete(id: taskID)
     }
