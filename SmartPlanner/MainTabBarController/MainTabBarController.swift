@@ -5,8 +5,8 @@ class MainTabBarController: UITabBarController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupTabs()
-        tabBar.tintColor = .systemIndigo
-        tabBar.backgroundColor = .systemBackground
+        tabBar.tintColor = AppDesign.primaryColor
+        tabBar.backgroundColor = AppDesign.cardBackground
     }
     
     private func setupTabs() {
@@ -19,6 +19,10 @@ class MainTabBarController: UITabBarController {
         let analyticsVC = UINavigationController(rootViewController: AnalyticsViewController())
         analyticsVC.tabBarItem = UITabBarItem(title: "Analytics", image: UIImage(systemName: "chart.pie.fill"), tag: 2)
         
-        viewControllers = [tasksVC, smartVC, analyticsVC]
+        // НОВЫЙ ТАБ: Settings
+        let settingsVC = UINavigationController(rootViewController: SettingsViewController())
+        settingsVC.tabBarItem = UITabBarItem(title: "Settings", image: UIImage(systemName: "gearshape.fill"), tag: 3)
+        
+        viewControllers = [tasksVC, smartVC, analyticsVC, settingsVC]
     }
 }

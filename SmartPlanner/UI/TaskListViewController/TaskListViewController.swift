@@ -1,15 +1,32 @@
 import UIKit
 
+// MARK: - Custom Gesture
+class CustomTapGesture: UITapGestureRecognizer {
+    var sectionID: String?
+}
+
 class TaskListViewController: UIViewController {
     
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<String, UUID>!
     private var collapsedSections: Set<String> = ["COMPLETED", "OVERDUE"]
     
+    // UI для пустого состояния
+    private let emptyStateView: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 20
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.isHidden = true
+        return stack
+    }()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupNavigationBar()
         configureHierarchy()
+        setupEmptyState() // Добавлено
         configureDataSource()
         
         NotificationCenter.default.addObserver(self, selector: #selector(updateSnapshot), name: NSNotification.Name("TasksUpdated"), object: nil)
@@ -27,6 +44,37 @@ class TaskListViewController: UIViewController {
         )
         addButton.tintColor = AppDesign.primaryColor
         navigationItem.rightBarButtonItem = addButton
+    }
+    
+    private func setupEmptyState() {
+        let label = UILabel()
+        label.text = "You haven't added anything yet.\nTap below to add your first task."
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.textColor = .secondaryLabel
+        
+        let addBtn = UIButton(type: .system)
+        var config = UIButton.Configuration.filled()
+        config.title = "Add Task"
+        config.image = UIImage(systemName: "plus")
+        config.imagePadding = 8
+        config.baseBackgroundColor = AppDesign.primaryColor
+        config.cornerStyle = .capsule
+        addBtn.configuration = config
+        addBtn.addTarget(self, action: #selector(didTapAdd), for: .touchUpInside)
+        
+        emptyStateView.addArrangedSubview(label)
+        emptyStateView.addArrangedSubview(addBtn)
+        
+        // Добавляем ПОВЕРХ коллекции, чтобы не мешать навигации
+        view.addSubview(emptyStateView)
+        NSLayoutConstraint.activate([
+            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
+        ])
     }
     
     private func configureHierarchy() {
@@ -92,7 +140,6 @@ class TaskListViewController: UIViewController {
                 maintainsFixedSize: true
             )
             
-            // Явное указание параметра configuration
             headerView.accessories = [.customView(configuration: customConfig)]
             
             let tap = CustomTapGesture(target: self, action: #selector(self.toggleSection(_:)))
@@ -114,22 +161,18 @@ class TaskListViewController: UIViewController {
         guard let sectionIdentifier = gesture.sectionID,
               let headerView = gesture.view as? UICollectionViewListCell else { return }
         
-        // 1. Меняем состояние в сете
         if collapsedSections.contains(sectionIdentifier) {
             collapsedSections.remove(sectionIdentifier)
         } else {
             collapsedSections.insert(sectionIdentifier)
         }
         
-        // 2. Мгновенно обновляем иконку
         let isCollapsed = collapsedSections.contains(sectionIdentifier)
         let imageName = isCollapsed ? "chevron.right" : "chevron.down"
-        
         let arrowView = UIImageView(image: UIImage(systemName: imageName))
         arrowView.tintColor = .systemGray
         arrowView.contentMode = .scaleAspectFit
         
-        // ФИКС ОШИБКИ: Явно указываем configuration:
         let config = UICellAccessory.CustomViewConfiguration(
             customView: arrowView,
             placement: .trailing(),
@@ -139,16 +182,17 @@ class TaskListViewController: UIViewController {
             maintainsFixedSize: true
         )
         
-        // ВОТ ТУТ БЫЛА ОШИБКА. Исправлено на .customView(configuration: config)
         headerView.accessories = [.customView(configuration: config)]
-        
-        // 3. Обновляем список задач
         updateSnapshot()
     }
     
     @objc func updateSnapshot() {
-        var snapshot = NSDiffableDataSourceSnapshot<String, UUID>()
         let tasks = TaskManager.shared.tasks
+        
+        // Управляем видимостью заглушки, НЕ скрывая коллекцию (для сохранения Title)
+        emptyStateView.isHidden = !tasks.isEmpty
+        
+        var snapshot = NSDiffableDataSourceSnapshot<String, UUID>()
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         
@@ -190,8 +234,7 @@ class TaskListViewController: UIViewController {
         
         addSection(named: "COMPLETED", items: completedItems)
         
-        // ИСПРАВЛЕНИЕ: Реконфигурируем только те айтемы, которые реально попали в новый снимок.
-        // Это исключает краш "item identifier that does not exist in the snapshot".
+        // КРИТИЧЕСКАЯ СЕКЦИЯ: Реконфигурируем только активные ID
         let activeIdentifiersInSnapshot = snapshot.itemIdentifiers
         snapshot.reconfigureItems(activeIdentifiersInSnapshot)
         
@@ -202,11 +245,6 @@ class TaskListViewController: UIViewController {
         let vc = AddTaskViewController()
         present(UINavigationController(rootViewController: vc), animated: true)
     }
-}
-
-// Кастомный жест, чтобы протащить ID секции
-class CustomTapGesture: UITapGestureRecognizer {
-    var sectionID: String?
 }
 
 extension TaskListViewController: UICollectionViewDelegate {
