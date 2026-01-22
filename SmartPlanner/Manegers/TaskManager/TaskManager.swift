@@ -66,20 +66,42 @@ class TaskManager {
     func addTask(_ task: SmartTask) {
         tasks.append(task)
         saveTasks()
+        NotificationManager.shared.scheduleNotification(for: task) // Планируем пуш
         NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
     }
-    
+
     func toggleComplete(id: UUID) {
         if let index = tasks.firstIndex(where: { $0.id == id }) {
             tasks[index].isCompleted.toggle()
             saveTasks()
+            
+            let task = tasks[index]
+            if task.isCompleted {
+                NotificationManager.shared.cancelNotification(for: task) // Удаляем пуш если завершено
+            } else {
+                NotificationManager.shared.scheduleNotification(for: task) // Возвращаем в очередь если сняли галочку
+            }
+            
             NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
         }
     }
-    
+
     func deleteTask(at index: Int) {
+        let task = tasks[index]
+        NotificationManager.shared.cancelNotification(for: task) // Удаляем пуш при удалении таска
+        
         tasks.remove(at: index)
         saveTasks()
+        NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
+    }
+
+    // При массовой загрузке (из iCloud или календаря)
+    func reloadTasks() {
+        loadTasks()
+        // Перепланируем все активные задачи
+        tasks.filter { !$0.isCompleted }.forEach {
+            NotificationManager.shared.scheduleNotification(for: $0)
+        }
         NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
     }
 
@@ -100,10 +122,5 @@ class TaskManager {
         } catch {
             print("New storage initialized")
         }
-    }
-    
-    func reloadTasks() {
-        loadTasks() 
-        NotificationCenter.default.post(name: NSNotification.Name("TasksUpdated"), object: nil)
     }
 }
