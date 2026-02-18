@@ -7,7 +7,7 @@ workflows:
       groups:
         - app_store_credentials
       vars:
-        BUNDLE_ID: "com.Shevchhuuk.SmartPlanner.app"
+        BUNDLE_ID: "com.Shevchhuuk.AISmartPlanner.app"
         XCODE_PROJECT: "SmartPlanner.xcodeproj"
         XCODE_SCHEME: "SmartPlanner"
       
