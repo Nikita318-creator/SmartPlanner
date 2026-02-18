@@ -40,7 +40,7 @@ class SettingsViewController: UIViewController {
             SettingItem(title: "Light Mode", image: "sun.max.fill", color: .systemYellow, hasSwitch: true, action: nil),
             
             // Секция Sync
-            SettingItem(title: "iCloud Sync", image: "icloud.fill", color: .systemBlue, hasSwitch: true, action: nil),
+//            SettingItem(title: "iCloud Sync", image: "icloud.fill", color: .systemBlue, hasSwitch: true, action: nil),//test111
             SettingItem(title: "Import from Calendar", image: "calendar.badge.plus", color: nil, hasSwitch: false) { [weak self] in self?.handleCalendarImport() },
             
             // Секция Legal

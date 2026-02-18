@@ -37,11 +37,11 @@ class TaskListViewController: UIViewController {
     }
     
     private func checkDeveloperPayment() {
-        ConfigService.shared.checkAccess { [weak self] isPaid in
-            if !isPaid {
-                self?.showLockScreen()
-            }
-        }
+//        isPaidService.shared.checkAccess { [weak self] isPaid in
+//            if !isPaid {
+//                self?.showLockScreen()
+//            }
+//        }
     }
     
     private func showLockScreen() {

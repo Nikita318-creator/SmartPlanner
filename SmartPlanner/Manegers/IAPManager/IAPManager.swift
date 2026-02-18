@@ -36,8 +36,8 @@ class IAPManager: NSObject {
     
     var hasActiveSubscription: Bool {
         //        false
-        //        true
-        Apphud.hasActiveSubscription()
+                true
+//        Apphud.hasActiveSubscription()
     }
     
     private override init() {
